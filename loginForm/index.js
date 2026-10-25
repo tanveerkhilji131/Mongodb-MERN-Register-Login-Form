@@ -3,27 +3,26 @@ require("./connection & Sehema/conn")
 const express = require("express");
 const hasing = require("bcryptjs")
 const app = express();
-const PORT =  process.env.PORT || 2000
+const PORT =  process.env.PORT
 const jwt = require("jsonwebtoken");
-// const userRouter = require("./router/Users")
 const collection = require("./connection & Sehema/Schema")
 const path = require("path")
 const hbs = require("hbs")
-const cookies = require("cookie-parser")
+const cookieParser = require("cookie-parser")
+app.use(cookieParser())
+
 app.use(express.urlencoded({ extended: true }));
 
 let static_path = path.join(__dirname,"./frontend")
 let template_path = path.join(__dirname,"./templates/views")
 let partials_path = path.join(__dirname,"./templates/partials")
-
 app.use(express.static(static_path))
 app.set("view engine","hbs")
 app.set("views",template_path)
-hbs.registerPartials(partials_path)
 
 
-app.get("/",async (req,res)=>{
-    res.render("index")
+app.get("/", (req,res)=>{
+    res.send(`<h1><a href=${`/ragister`}>ragister </a></h1> <h3>OR</h3> <h1><a href=${'/login'}>Login</a></h1>`)
 })
 app.get("/ragister",(req,res)=>{
     res.render("ragister")
@@ -33,8 +32,7 @@ app.get("/ragister",(req,res)=>{
 app.post("/ragister",async (req,res)=>{
     try{
   const ragistered = new collection(req.body)
-//   const tokengenrator = await ragistered.tokenGen();
-//   console.log('token is = ' , tokengenrator)
+
   let data = await  ragistered.save()
   if(data){
    res.redirect("/login")
@@ -57,13 +55,18 @@ app.post("/login",async (req,res)=>{
         if(passMetch){
             let jwttoken = jwt.sign(
                 {userId : data._id.toString()},
-                process.env.JWT  )
+                process.env.JWT ,
+             {  expiresIn: '60s'} )  
            
-            res.cookie("jwt",jwttoken,{
-                expires : new Date(Date.now() + 30000),
-                httpOnly : true
+          res.cookie("jwt",jwttoken,{
+            maxAge : 60 * 1000,
+                httpOnly : true,
+                sameSite : "lax",
+              
             })
-            res.status(201).send("succesfully login")
+          
+                res.redirect("/secure")
+            
         }else{
             res.send("envalid password")
         }
@@ -74,22 +77,34 @@ app.post("/login",async (req,res)=>{
     }
 })
 
-
-app.post("/secure",async (req,res)=>{
-    try{
-        let checkcookie = await req.cookies.jwt;
-        console.log(checkcookie)
-        if(!checkcookie){
-            res.send("cookie not avilabe pls login")
-        }
-        res.render("secure")
-    }catch(err){
-        res.status(404).json({status : "error", message : err.message})
+app.get("/secure", (req,res)=>{
+    let checkCookie = req.cookies?.jwt;
+  
+    if(!checkCookie){
+      return  res.send("pls login")
     }
-})
-app.get("/secure",  (req,res)=>{
-   
+  
+  try{
+    let verifytoken = jwt.verify(checkCookie,process.env.JWT)
     res.render("secure")
+
+  }catch(err){
+   res.clearCookie("jwt",{
+    httpOnly : true,
+    sameSite : 'lax',
+    secure : process.env.Node_ENV = "production"
+   })
+   if(err.name == "TokenExpiredError"){
+    return res.status(401).send(
+        `your cookie is expire pls <a href=${"/login"}>login</a> first `
+    )
+   }
+   return res.status(401).send(
+    "Invalid token ,pls login"
+   )
+  
+  }
+   
 })
 
 app.listen(PORT,()=>{
